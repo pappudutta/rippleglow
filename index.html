@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>RippleGlow</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #061827;
+      touch-action: none;
+      font-family: system-ui, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .hint {
+      position: fixed;
+      left: 50%;
+      bottom: max(24px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      color: rgba(235, 250, 255, 0.75);
+      font: 14px/1.4 system-ui, sans-serif;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+      text-align: center;
+      text-shadow: 0 1px 12px #00121e;
+    }
+
+    .sound-toggle {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      right: 16px;
+      padding: 10px 14px;
+      border: 1px solid rgba(200, 240, 255, 0.28);
+      border-radius: 999px;
+      background: rgba(5, 28, 42, 0.62);
+      color: rgba(235, 250, 255, 0.9);
+      font: 14px system-ui, sans-serif;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+    }
+
+    .sound-toggle:focus-visible {
+      outline: 2px solid #9ceeff;
+      outline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="water"></canvas>
+  <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true">Sound on</button>
+  <div class="hint">Touch, drag, or use multiple fingers to make ripples</div>
+
+  <script>
+    const canvas = document.querySelector("#water");
+    const ctx = canvas.getContext("2d");
+    const soundToggle = document.querySelector("#soundToggle");
+    const ripples = [];
+    const activePointers = new Map();
+
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    let soundEnabled = true;
+    let audioContext;
+    let noiseBuffer;
+
+    function resize() {
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    function addRipple(x, y) {
+      ripples.push({
+        x,
+        y,
+        start: performance.now(),
+        hue: Math.floor(Math.random() * 360),
+        size: 0.8 + Math.random() * 0.6
+      });
+    }
+
+    function getAudioContext() {
+      if (!audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+
+        audioContext = new AudioContextClass();
+
+        const length = Math.floor(audioContext.sampleRate * 0.7);
+        noiseBuffer = audioContext.createBuffer(1, length, audioContext.sampleRate);
+
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < length; i++) {
+          data[i] = (Math.random() * 2 - 1) * 0.45;
+        }
+      }
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+
+      return audioContext;
+    }
+
+    function playWaterSound(x, intensity = 1) {
+      if (!soundEnabled) return;
+
+      const audio = getAudioContext();
+      if (!audio) return;
+
+      const now = audio.currentTime;
+      const pan = Math.max(-1, Math.min(1, (x / width) * 2 - 1));
+
+      const source = audio.createBufferSource();
+      source.buffer = noiseBuffer;
+
+      const filter = audio.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 700 + Math.random() * 500;
+      filter.Q.value = 0.5;
+
+      const panner = audio.createStereoPanner();
+      panner.pan.value = pan;
+
+      const noiseGain = audio.createGain();
+      const volume = Math.min(0.055, 0.025 * intensity);
+      noiseGain.gain.setValueAtTime(0.0001, now);
+      noiseGain.gain.exponentialRampToValueAtTime(volume, now + 0.035);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+
+      source.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(panner);
+      panner.connect(audio.destination);
+
+      source.start(now);
+      source.stop(now + 0.58);
+
+      const tone = audio.createOscillator();
+      const toneGain = audio.createGain();
+      tone.type = "sine";
+      tone.frequency.setValueAtTime(280 + Math.random() * 150, now);
+      tone.frequency.exponentialRampToValueAtTime(170 + Math.random() * 50, now + 0.5);
+
+      toneGain.gain.setValueAtTime(0.0001, now);
+      toneGain.gain.exponentialRampToValueAtTime(0.018 * intensity, now + 0.04);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+      tone.connect(toneGain);
+      toneGain.connect(panner);
+      tone.start(now);
+      tone.stop(now + 0.62);
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      canvas.setPointerCapture(event.pointerId);
+
+      const point = { x: event.clientX, y: event.clientY };
+      activePointers.set(event.pointerId, {
+        ...point,
+        lastRippleX: point.x,
+        lastRippleY: point.y,
+        lastSoundAt: 0
+      });
+
+      addRipple(point.x, point.y);
+      playWaterSound(point.x, 1);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      const pointer = activePointers.get(event.pointerId);
+      if (!pointer) return;
+
+      const x = event.clientX;
+      const y = event.clientY;
+      const distance = Math.hypot(x - pointer.lastRippleX, y - pointer.lastRippleY);
+
+      if (distance >= 24) {
+        addRipple(x, y);
+        pointer.lastRippleX = x;
+        pointer.lastRippleY = y;
+
+        const now = performance.now();
+        if (now - pointer.lastSoundAt > 240) {
+          playWaterSound(x, 0.7);
+          pointer.lastSoundAt = now;
+        }
+      }
+
+      pointer.x = x;
+      pointer.y = y;
+    });
+
+    function endPointer(event) {
+      activePointers.delete(event.pointerId);
+    }
+
+    canvas.addEventListener("pointerup", endPointer);
+    canvas.addEventListener("pointercancel", endPointer);
+    canvas.addEventListener("lostpointercapture", endPointer);
+
+    soundToggle.addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      soundToggle.textContent = soundEnabled ? "Sound on" : "Sound off";
+      soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+
+      if (soundEnabled) getAudioContext();
+    });
+
+    function drawBackground(time) {
+      const glowX = width * (0.5 + Math.sin(time * 0.00015) * 0.16);
+      const glowY = height * (0.48 + Math.cos(time * 0.00012) * 0.12);
+
+      const gradient = ctx.createRadialGradient(
+        glowX, glowY, 0,
+        width * 0.5, height * 0.5, Math.max(width, height) * 0.8
+      );
+      gradient.addColorStop(0, "#123a4a");
+      gradient.addColorStop(0.55, "#092638");
+      gradient.addColorStop(1, "#04131f");
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.strokeStyle = "#9ceeff";
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i < 9; i++) {
+        const y = height * (i / 8) + Math.sin(time * 0.0007 + i) * 12;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(
+          width * 0.3, y + Math.sin(time * 0.0005 + i) * 24,
+          width * 0.7, y - Math.cos(time * 0.0004 + i) * 24,
+          width, y + Math.sin(time * 0.0006 + i * 2) * 12
+        );
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawRipple(ripple, time) {
+      const age = (time - ripple.start) / 1000;
+      const duration = 3.2;
+      if (age >= duration) return false;
+
+      const progress = age / duration;
+      const fade = Math.pow(1 - progress, 1.5);
+      const baseRadius = age * 190 * ripple.size;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      for (let ring = 0; ring < 5; ring++) {
+        const radius = baseRadius - ring * 15;
+        if (radius <= 0) continue;
+
+        const ringFade = fade * (1 - ring / 6);
+        const hue = (ripple.hue + ring * 9) % 360;
+
+        ctx.beginPath();
+        const points = 120;
+
+        for (let i = 0; i <= points; i++) {
+          const angle = (i / points) * Math.PI * 2;
+          const wobble =
+            Math.sin(angle * 5 + age * 5 + ring) * 2.2 +
+            Math.sin(angle * 9 - age * 3) * 1.2;
+          const r = radius + wobble * (1 - progress);
+          const x = ripple.x + Math.cos(angle) * r;
+          const y = ripple.y + Math.sin(angle) * r * 0.72;
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+
+        ctx.closePath();
+        ctx.strokeStyle = `hsla(${hue}, 100%, 72%, ${ringFade * 0.72})`;
+        ctx.lineWidth = ring === 0 ? 2.5 : 1.4;
+        ctx.shadowColor = `hsla(${hue}, 100%, 65%, ${ringFade})`;
+        ctx.shadowBlur = 18;
+        ctx.stroke();
+      }
+
+      const spot = ctx.createRadialGradient(
+        ripple.x, ripple.y, 0,
+        ripple.x, ripple.y, Math.max(8, 45 * (1 - progress))
+      );
+      spot.addColorStop(0, `hsla(${ripple.hue}, 100%, 80%, ${fade * 0.22})`);
+      spot.addColorStop(1, `hsla(${ripple.hue}, 100%, 60%, 0)`);
+
+      ctx.fillStyle = spot;
+      ctx.beginPath();
+      ctx.arc(ripple.x, ripple.y, 45 * (1 - progress), 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+      return true;
+    }
+
+    function animate(time) {
+      drawBackground(time);
+
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        if (!drawRipple(ripples[i], time)) {
+          ripples.splice(i, 1);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
