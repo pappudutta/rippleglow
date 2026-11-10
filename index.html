@@ -3,331 +3,359 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>RippleGlow</title>
+  <meta name="theme-color" content="#071b26" />
+  <meta name="description" content="A calm, touchable water surface. Make soft ripples with every tap and drag." />
+  <title>RippleGlow — a little water break</title>
   <style>
+    :root {
+      color-scheme: dark;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --white: rgba(240, 249, 250, .88);
+      --muted: rgba(208, 228, 231, .6);
+      --glass: rgba(9, 29, 38, .43);
+      --line: rgba(220, 244, 246, .15);
+    }
+
     * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: #071b26; touch-action: none; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #061827;
-      touch-action: none;
-      font-family: system-ui, sans-serif;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      cursor: crosshair;
-      touch-action: none;
-    }
-
-    .hint {
+    .topbar {
       position: fixed;
-      left: 50%;
-      bottom: max(24px, env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      color: rgba(235, 250, 255, 0.75);
-      font: 14px/1.4 system-ui, sans-serif;
-      letter-spacing: 0.04em;
+      z-index: 2;
+      inset: max(22px, env(safe-area-inset-top)) 22px auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
       pointer-events: none;
-      text-align: center;
-      text-shadow: 0 1px 12px #00121e;
     }
+
+    .brand { display: grid; gap: 5px; text-shadow: 0 2px 18px rgba(0, 0, 0, .35); }
+    .brand-name { color: var(--white); font-size: 15px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+    .brand-note { color: var(--muted); font-size: 12px; letter-spacing: .03em; }
 
     .sound-toggle {
-      position: fixed;
-      top: max(16px, env(safe-area-inset-top));
-      right: 16px;
-      padding: 10px 14px;
-      border: 1px solid rgba(200, 240, 255, 0.28);
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 42px;
+      padding: 0 15px;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: rgba(5, 28, 42, 0.62);
-      color: rgba(235, 250, 255, 0.9);
-      font: 14px system-ui, sans-serif;
+      background: var(--glass);
+      color: var(--white);
+      font: 500 13px/1 inherit;
+      letter-spacing: .02em;
       cursor: pointer;
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 8px 24px rgba(0,0,0,.12);
+      transition: background .2s ease, border-color .2s ease, transform .2s ease;
     }
+    .sound-toggle:hover { background: rgba(19, 47, 57, .68); border-color: rgba(220,244,246,.28); }
+    .sound-toggle:active { transform: scale(.97); }
+    .sound-toggle:focus-visible { outline: 2px solid rgba(208, 240, 240, .8); outline-offset: 3px; }
+    .sound-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
-    .sound-toggle:focus-visible {
-      outline: 2px solid #9ceeff;
-      outline-offset: 3px;
+    .instruction {
+      position: fixed;
+      z-index: 2;
+      left: 50%;
+      bottom: max(30px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 11px 17px;
+      border: 1px solid rgba(220, 244, 246, .1);
+      border-radius: 999px;
+      background: rgba(7, 25, 34, .35);
+      color: rgba(232, 245, 245, .72);
+      font-size: 12px;
+      letter-spacing: .035em;
+      text-align: center;
+      pointer-events: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      transition: opacity .8s ease;
     }
+    .instruction.hidden { opacity: 0; }
+
+    @media (max-width: 520px) {
+      .topbar { inset-inline: 16px; }
+      .brand-note { font-size: 11px; }
+      .sound-toggle { min-height: 40px; padding-inline: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
   </style>
 </head>
 <body>
-  <canvas id="water"></canvas>
-  <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true">Sound on</button>
-  <div class="hint">Touch, drag, or use multiple fingers to make ripples</div>
+  <canvas id="water" aria-label="Interactive water surface. Touch or drag to make ripples."></canvas>
+
+  <header class="topbar">
+    <div class="brand" aria-label="RippleGlow">
+      <span class="brand-name">RippleGlow</span>
+      <span class="brand-note">A little water break</span>
+    </div>
+    <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false" aria-label="Turn sound on">
+      <svg class="sound-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+        <path id="soundWaves" d="M15.5 8.5a5 5 0 0 1 0 7" style="display:none" />
+        <path id="soundMute" d="m16 9 5 6m0-6-5 6" />
+      </svg>
+      <span id="soundLabel">Sound off</span>
+    </button>
+  </header>
+
+  <div class="instruction" id="instruction">Touch and drift to send ripples across the water</div>
 
   <script>
     const canvas = document.querySelector("#water");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     const soundToggle = document.querySelector("#soundToggle");
+    const soundLabel = document.querySelector("#soundLabel");
+    const soundWaves = document.querySelector("#soundWaves");
+    const soundMute = document.querySelector("#soundMute");
+    const instruction = document.querySelector("#instruction");
     const ripples = [];
     const activePointers = new Map();
+    const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let width = 0;
     let height = 0;
     let pixelRatio = 1;
-    let soundEnabled = true;
+    let soundEnabled = false;
     let audioContext;
     let noiseBuffer;
+    let hasInteracted = false;
 
     function resize() {
       pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
-      canvas.width = width * pixelRatio;
-      canvas.height = height * pixelRatio;
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
       ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     }
 
-    function addRipple(x, y) {
+    function addRipple(x, y, strength = 1) {
+      // Each disturbance carries a restrained, randomly shifting reflection tint.
       ripples.push({
-        x,
-        y,
+        x, y,
         start: performance.now(),
-        hue: Math.floor(Math.random() * 360),
-        size: 0.8 + Math.random() * 0.6
+        hue: 178 + Math.random() * 62,
+        strength,
+        phase: Math.random() * Math.PI * 2,
+        width: .84 + Math.random() * .32
       });
+      if (ripples.length > 70) ripples.splice(0, ripples.length - 70);
     }
 
     function getAudioContext() {
       if (!audioContext) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return null;
-
         audioContext = new AudioContextClass();
-
-        const length = Math.floor(audioContext.sampleRate * 0.7);
+        const length = Math.floor(audioContext.sampleRate * .8);
         noiseBuffer = audioContext.createBuffer(1, length, audioContext.sampleRate);
-
         const data = noiseBuffer.getChannelData(0);
+        let last = 0;
         for (let i = 0; i < length; i++) {
-          data[i] = (Math.random() * 2 - 1) * 0.45;
+          last = last * .82 + (Math.random() * 2 - 1) * .18;
+          data[i] = last;
         }
       }
-
-      if (audioContext.state === "suspended") {
-        audioContext.resume();
-      }
-
+      if (audioContext.state === "suspended") audioContext.resume();
       return audioContext;
     }
 
     function playWaterSound(x, intensity = 1) {
       if (!soundEnabled) return;
-
       const audio = getAudioContext();
       if (!audio) return;
 
       const now = audio.currentTime;
-      const pan = Math.max(-1, Math.min(1, (x / width) * 2 - 1));
-
+      const pan = Math.max(-1, Math.min(1, (x / Math.max(width, 1)) * 2 - 1));
       const source = audio.createBufferSource();
       source.buffer = noiseBuffer;
-
       const filter = audio.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.value = 700 + Math.random() * 500;
-      filter.Q.value = 0.5;
-
+      filter.frequency.setValueAtTime(420 + Math.random() * 260, now);
+      filter.frequency.exponentialRampToValueAtTime(180, now + .65);
+      filter.Q.value = .45;
       const panner = audio.createStereoPanner();
       panner.pan.value = pan;
-
-      const noiseGain = audio.createGain();
-      const volume = Math.min(0.055, 0.025 * intensity);
-      noiseGain.gain.setValueAtTime(0.0001, now);
-      noiseGain.gain.exponentialRampToValueAtTime(volume, now + 0.035);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
-
-      source.connect(filter);
-      filter.connect(noiseGain);
-      noiseGain.connect(panner);
-      panner.connect(audio.destination);
-
+      const gain = audio.createGain();
+      const volume = Math.min(.035, .018 * intensity);
+      gain.gain.setValueAtTime(.0001, now);
+      gain.gain.exponentialRampToValueAtTime(volume, now + .08);
+      gain.gain.exponentialRampToValueAtTime(.0001, now + .72);
+      source.connect(filter).connect(gain).connect(panner).connect(audio.destination);
       source.start(now);
-      source.stop(now + 0.58);
+      source.stop(now + .75);
 
       const tone = audio.createOscillator();
       const toneGain = audio.createGain();
       tone.type = "sine";
-      tone.frequency.setValueAtTime(280 + Math.random() * 150, now);
-      tone.frequency.exponentialRampToValueAtTime(170 + Math.random() * 50, now + 0.5);
-
-      toneGain.gain.setValueAtTime(0.0001, now);
-      toneGain.gain.exponentialRampToValueAtTime(0.018 * intensity, now + 0.04);
-      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-
-      tone.connect(toneGain);
-      toneGain.connect(panner);
+      tone.frequency.setValueAtTime(190 + Math.random() * 70, now);
+      tone.frequency.exponentialRampToValueAtTime(120 + Math.random() * 30, now + .7);
+      toneGain.gain.setValueAtTime(.0001, now);
+      toneGain.gain.exponentialRampToValueAtTime(.008 * intensity, now + .1);
+      toneGain.gain.exponentialRampToValueAtTime(.0001, now + .8);
+      tone.connect(toneGain).connect(panner);
       tone.start(now);
-      tone.stop(now + 0.62);
+      tone.stop(now + .82);
     }
 
     canvas.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
-
+      if (!hasInteracted) {
+        hasInteracted = true;
+        instruction.classList.add("hidden");
+      }
       const point = { x: event.clientX, y: event.clientY };
       activePointers.set(event.pointerId, {
-        ...point,
-        lastRippleX: point.x,
-        lastRippleY: point.y,
-        lastSoundAt: 0
+        ...point, lastRippleX: point.x, lastRippleY: point.y, lastSoundAt: 0
       });
-
-      addRipple(point.x, point.y);
+      addRipple(point.x, point.y, 1.15);
       playWaterSound(point.x, 1);
     });
 
     canvas.addEventListener("pointermove", (event) => {
       const pointer = activePointers.get(event.pointerId);
       if (!pointer) return;
-
       const x = event.clientX;
       const y = event.clientY;
       const distance = Math.hypot(x - pointer.lastRippleX, y - pointer.lastRippleY);
-
-      if (distance >= 24) {
-        addRipple(x, y);
+      if (distance >= 28) {
+        addRipple(x, y, .72);
         pointer.lastRippleX = x;
         pointer.lastRippleY = y;
-
         const now = performance.now();
-        if (now - pointer.lastSoundAt > 240) {
-          playWaterSound(x, 0.7);
+        if (now - pointer.lastSoundAt > 320) {
+          playWaterSound(x, .65);
           pointer.lastSoundAt = now;
         }
       }
-
       pointer.x = x;
       pointer.y = y;
     });
 
-    function endPointer(event) {
-      activePointers.delete(event.pointerId);
-    }
-
+    function endPointer(event) { activePointers.delete(event.pointerId); }
     canvas.addEventListener("pointerup", endPointer);
     canvas.addEventListener("pointercancel", endPointer);
     canvas.addEventListener("lostpointercapture", endPointer);
 
     soundToggle.addEventListener("click", () => {
       soundEnabled = !soundEnabled;
-      soundToggle.textContent = soundEnabled ? "Sound on" : "Sound off";
+      soundLabel.textContent = soundEnabled ? "Sound on" : "Sound off";
       soundToggle.setAttribute("aria-pressed", String(soundEnabled));
-
+      soundToggle.setAttribute("aria-label", soundEnabled ? "Turn sound off" : "Turn sound on");
+      soundWaves.style.display = soundEnabled ? "" : "none";
+      soundMute.style.display = soundEnabled ? "none" : "";
       if (soundEnabled) getAudioContext();
     });
 
-    function drawBackground(time) {
-      const glowX = width * (0.5 + Math.sin(time * 0.00015) * 0.16);
-      const glowY = height * (0.48 + Math.cos(time * 0.00012) * 0.12);
+    function drawWater(time) {
+      const t = prefersReducedMotion ? 0 : time;
+      const driftX = width * (.48 + Math.sin(t * .000075) * .12);
+      const driftY = height * (.42 + Math.cos(t * .00006) * .09);
+      const radius = Math.max(width, height) * .88;
 
-      const gradient = ctx.createRadialGradient(
-        glowX, glowY, 0,
-        width * 0.5, height * 0.5, Math.max(width, height) * 0.8
-      );
-      gradient.addColorStop(0, "#123a4a");
-      gradient.addColorStop(0.55, "#092638");
-      gradient.addColorStop(1, "#04131f");
-
-      ctx.fillStyle = gradient;
+      const base = ctx.createLinearGradient(0, 0, width * .8, height);
+      base.addColorStop(0, "#173a46");
+      base.addColorStop(.38, "#0c2b38");
+      base.addColorStop(.72, "#09232f");
+      base.addColorStop(1, "#061923");
+      ctx.fillStyle = base;
       ctx.fillRect(0, 0, width, height);
 
+      const reflection = ctx.createRadialGradient(driftX, driftY, 0, driftX, driftY, radius);
+      reflection.addColorStop(0, "rgba(143, 190, 185, .19)");
+      reflection.addColorStop(.24, "rgba(66, 128, 132, .10)");
+      reflection.addColorStop(1, "rgba(4, 17, 25, .02)");
+      ctx.fillStyle = reflection;
+      ctx.fillRect(0, 0, width, height);
+
+      // Fine, broken reflection strokes suggest a softly moving natural surface.
       ctx.save();
-      ctx.globalAlpha = 0.07;
-      ctx.strokeStyle = "#9ceeff";
-      ctx.lineWidth = 1;
-
-      for (let i = 0; i < 9; i++) {
-        const y = height * (i / 8) + Math.sin(time * 0.0007 + i) * 12;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.bezierCurveTo(
-          width * 0.3, y + Math.sin(time * 0.0005 + i) * 24,
-          width * 0.7, y - Math.cos(time * 0.0004 + i) * 24,
-          width, y + Math.sin(time * 0.0006 + i * 2) * 12
-        );
-        ctx.stroke();
+      const bands = Math.ceil(height / 15);
+      for (let i = 0; i < bands; i++) {
+        const y = i * 15 + Math.sin(t * .00038 + i * .72) * 4;
+        const centerDistance = Math.abs(y - driftY) / Math.max(height, 1);
+        const alpha = Math.max(0, .025 - centerDistance * .04);
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = i % 3 === 0 ? "#d8e8d8" : "#8ab5b5";
+        ctx.lineWidth = i % 4 === 0 ? 1.2 : .7;
+        for (let j = 0; j < 5; j++) {
+          const segmentX = ((j * 337 + i * 79 + t * .012) % (width + 120)) - 60;
+          const segmentWidth = 18 + (Math.sin(i * 12.4 + j) + 1) * 32;
+          ctx.beginPath();
+          ctx.moveTo(segmentX, y);
+          ctx.quadraticCurveTo(segmentX + segmentWidth * .5, y + Math.sin(t * .0006 + i) * 2, segmentX + segmentWidth, y + 1);
+          ctx.stroke();
+        }
       }
-
       ctx.restore();
+
+      // Subtle edge shading gives the surface a deeper, more photographic feel.
+      const vignette = ctx.createRadialGradient(width * .5, height * .44, Math.min(width, height) * .16, width * .5, height * .5, Math.max(width, height) * .76);
+      vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+      vignette.addColorStop(1, "rgba(0, 8, 14, .43)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
     }
 
     function drawRipple(ripple, time) {
       const age = (time - ripple.start) / 1000;
-      const duration = 3.2;
+      const duration = 4.2;
       if (age >= duration) return false;
-
       const progress = age / duration;
-      const fade = Math.pow(1 - progress, 1.5);
-      const baseRadius = age * 190 * ripple.size;
+      const fade = Math.pow(1 - progress, 1.7) * ripple.strength;
+      const radius = age * 118;
+      const rings = [0, 13, 30, 52];
 
       ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-
-      for (let ring = 0; ring < 5; ring++) {
-        const radius = baseRadius - ring * 15;
-        if (radius <= 0) continue;
-
-        const ringFade = fade * (1 - ring / 6);
-        const hue = (ripple.hue + ring * 9) % 360;
-
+      for (let index = 0; index < rings.length; index++) {
+        const r = radius - rings[index];
+        if (r <= 1) continue;
+        const alpha = fade * [0.24, 0.56, 0.25, 0.12][index];
+        const wobble = 1 + .014 * Math.sin(ripple.phase + age * 2.2);
         ctx.beginPath();
-        const points = 120;
-
-        for (let i = 0; i <= points; i++) {
-          const angle = (i / points) * Math.PI * 2;
-          const wobble =
-            Math.sin(angle * 5 + age * 5 + ring) * 2.2 +
-            Math.sin(angle * 9 - age * 3) * 1.2;
-          const r = radius + wobble * (1 - progress);
-          const x = ripple.x + Math.cos(angle) * r;
-          const y = ripple.y + Math.sin(angle) * r * 0.72;
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-
-        ctx.closePath();
-        ctx.strokeStyle = `hsla(${hue}, 100%, 72%, ${ringFade * 0.72})`;
-        ctx.lineWidth = ring === 0 ? 2.5 : 1.4;
-        ctx.shadowColor = `hsla(${hue}, 100%, 65%, ${ringFade})`;
-        ctx.shadowBlur = 18;
+        ctx.ellipse(ripple.x, ripple.y, r * ripple.width * wobble, r * .58 * wobble, .025 * Math.sin(ripple.phase), 0, Math.PI * 2);
+        // Dark trough beneath a narrow silvery highlight creates a raised wave edge.
+        ctx.strokeStyle = `rgba(2, 15, 23, ${alpha * .8})`;
+        ctx.lineWidth = index === 1 ? 5 : 3.5;
+        ctx.filter = "blur(2px)";
         ctx.stroke();
+        ctx.filter = "none";
+        ctx.translate(0, -1.5);
+        ctx.strokeStyle = `hsla(${ripple.hue}, 28%, 83%, ${alpha})`;
+        ctx.lineWidth = index === 1 ? 1.25 : .8;
+        ctx.stroke();
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       }
 
-      const spot = ctx.createRadialGradient(
-        ripple.x, ripple.y, 0,
-        ripple.x, ripple.y, Math.max(8, 45 * (1 - progress))
-      );
-      spot.addColorStop(0, `hsla(${ripple.hue}, 100%, 80%, ${fade * 0.22})`);
-      spot.addColorStop(1, `hsla(${ripple.hue}, 100%, 60%, 0)`);
-
-      ctx.fillStyle = spot;
+      const glint = ctx.createRadialGradient(ripple.x, ripple.y, 0, ripple.x, ripple.y, Math.max(8, 36 * (1 - progress)));
+      glint.addColorStop(0, `rgba(205, 231, 218, ${fade * .12})`);
+      glint.addColorStop(1, "rgba(205, 231, 218, 0)");
+      ctx.fillStyle = glint;
       ctx.beginPath();
-      ctx.arc(ripple.x, ripple.y, 45 * (1 - progress), 0, Math.PI * 2);
+      ctx.arc(ripple.x, ripple.y, 36 * (1 - progress), 0, Math.PI * 2);
       ctx.fill();
-
       ctx.restore();
       return true;
     }
 
     function animate(time) {
-      drawBackground(time);
-
+      drawWater(time);
       for (let i = ripples.length - 1; i >= 0; i--) {
-        if (!drawRipple(ripples[i], time)) {
-          ripples.splice(i, 1);
-        }
+        if (!drawRipple(ripples[i], time)) ripples.splice(i, 1);
       }
-
       requestAnimationFrame(animate);
     }
 
